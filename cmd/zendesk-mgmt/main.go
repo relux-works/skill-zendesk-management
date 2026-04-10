@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"path/filepath"
 	"runtime"
 	"strings"
 
@@ -30,6 +31,12 @@ func main() {
 	switch os.Args[1] {
 	case "auth":
 		runAuth(os.Args[2:])
+	case "q":
+		runQuery(os.Args[2:])
+	case "grep":
+		runGrep(os.Args[2:])
+	case "attachment":
+		runAttachment(os.Args[2:])
 	case "version", "--version":
 		printVersion()
 	case "help", "--help", "-h":
@@ -44,6 +51,9 @@ func main() {
 func usage() {
 	fmt.Fprintln(os.Stderr, "Usage:")
 	fmt.Fprintln(os.Stderr, "  zendesk-mgmt version")
+	fmt.Fprintln(os.Stderr, "  zendesk-mgmt q '<query>' --organization ORG --format json|compact [--source auto|keychain|env_or_file] [--instance URL]")
+	fmt.Fprintln(os.Stderr, "  zendesk-mgmt grep 'text query' --organization ORG --format json|compact [--type ticket|user|organization] [--limit N]")
+	fmt.Fprintln(os.Stderr, "  zendesk-mgmt attachment download ATTACHMENT_ID --organization ORG [--destination PATH] [--force] [--source auto|keychain|env_or_file] [--instance URL]")
 	fmt.Fprintln(os.Stderr, "  zendesk-mgmt auth config-path")
 	fmt.Fprintln(os.Stderr, "  zendesk-mgmt auth set-access --organization ORG --email EMAIL --token TOKEN [--source auto|keychain|env_or_file]")
 	fmt.Fprintln(os.Stderr, "  zendesk-mgmt auth whoami [--source auto|keychain|env_or_file] [--organization ORG] [--instance URL] [--check=false]")
@@ -96,6 +106,199 @@ func runAuth(args []string) {
 		usage()
 		os.Exit(2)
 	}
+}
+
+func runQuery(args []string) {
+	fs := flag.NewFlagSet("q", flag.ExitOnError)
+	source := fs.String("source", string(config.SourceAuto), "Token source: auto, keychain, env_or_file")
+	organization := bindOrganizationFlags(fs)
+	instance := fs.String("instance", "", "Zendesk instance URL override")
+	format := fs.String("format", "json", "Output format: json or compact")
+	_ = fs.Parse(reorderFlagArgs(args))
+
+	if fs.NArg() != 1 {
+		fatalErr(fmt.Errorf("q requires exactly one query string argument"))
+	}
+
+	resolver := config.NewResolver(
+		config.Runtime{
+			GOOS:          runtime.GOOS,
+			UserConfigDir: os.UserConfigDir,
+			Getenv:        os.Getenv,
+		},
+		config.NewKeychainStore(keyring.Get, keyring.Set, keyring.Delete),
+	)
+
+	client, err := newZendeskClientFromResolver(resolver, config.Source(*source), *organization, *instance)
+	if err != nil {
+		fatalErr(err)
+	}
+
+	results, err := zendesk.NewQueryEngine(client).Execute(context.Background(), fs.Arg(0))
+	if err != nil {
+		fatalErr(err)
+	}
+
+	if err := writeResults(*format, results); err != nil {
+		fatalErr(err)
+	}
+}
+
+func runGrep(args []string) {
+	fs := flag.NewFlagSet("grep", flag.ExitOnError)
+	source := fs.String("source", string(config.SourceAuto), "Token source: auto, keychain, env_or_file")
+	organization := bindOrganizationFlags(fs)
+	instance := fs.String("instance", "", "Zendesk instance URL override")
+	format := fs.String("format", "compact", "Output format: json or compact")
+	grepType := fs.String("type", "", "Search result type filter: ticket, user, organization")
+	limit := fs.Int("limit", 10, "Result page size")
+	page := fs.Int("page", 1, "Search result page")
+	_ = fs.Parse(reorderFlagArgs(args))
+
+	if fs.NArg() < 1 {
+		fatalErr(fmt.Errorf("grep requires a query string"))
+	}
+
+	resolver := config.NewResolver(
+		config.Runtime{
+			GOOS:          runtime.GOOS,
+			UserConfigDir: os.UserConfigDir,
+			Getenv:        os.Getenv,
+		},
+		config.NewKeychainStore(keyring.Get, keyring.Set, keyring.Delete),
+	)
+
+	client, err := newZendeskClientFromResolver(resolver, config.Source(*source), *organization, *instance)
+	if err != nil {
+		fatalErr(err)
+	}
+
+	result, err := zendesk.NewQueryEngine(client).Grep(context.Background(), strings.Join(fs.Args(), " "), zendesk.GrepOptions{
+		Type:  *grepType,
+		Limit: *limit,
+		Page:  *page,
+	})
+	if err != nil {
+		fatalErr(err)
+	}
+
+	if err := writeResults(*format, []zendesk.Result{result}); err != nil {
+		fatalErr(err)
+	}
+}
+
+func runAttachment(args []string) {
+	if len(args) < 1 {
+		usage()
+		os.Exit(2)
+	}
+
+	switch args[0] {
+	case "download":
+		runAttachmentDownload(args[1:])
+	default:
+		fmt.Fprintf(os.Stderr, "unknown attachment command: %s\n\n", args[0])
+		usage()
+		os.Exit(2)
+	}
+}
+
+func runAttachmentDownload(args []string) {
+	fs := flag.NewFlagSet("attachment download", flag.ExitOnError)
+	source := fs.String("source", string(config.SourceAuto), "Token source: auto, keychain, env_or_file")
+	organization := bindOrganizationFlags(fs)
+	instance := fs.String("instance", "", "Zendesk instance URL override")
+	destination := fs.String("destination", "", "Destination file path or directory")
+	output := fs.String("output", "", "Output file path (compat alias; prefer --destination)")
+	dir := fs.String("dir", ".", "Output directory when --output is omitted (compat alias; prefer --destination DIR)")
+	force := fs.Bool("force", false, "Overwrite existing file")
+	_ = fs.Parse(reorderFlagArgs(args))
+
+	if fs.NArg() != 1 {
+		fatalErr(fmt.Errorf("attachment download requires exactly one attachment id"))
+	}
+
+	resolver := config.NewResolver(
+		config.Runtime{
+			GOOS:          runtime.GOOS,
+			UserConfigDir: os.UserConfigDir,
+			Getenv:        os.Getenv,
+		},
+		config.NewKeychainStore(keyring.Get, keyring.Set, keyring.Delete),
+	)
+
+	client, err := newZendeskClientFromResolver(resolver, config.Source(*source), *organization, *instance)
+	if err != nil {
+		fatalErr(err)
+	}
+
+	downloaded, err := client.DownloadAttachment(context.Background(), fs.Arg(0))
+	if err != nil {
+		fatalErr(err)
+	}
+
+	targetPath := resolveDestinationPath(downloaded.FileName, *destination, *output, *dir)
+
+	if !*force {
+		if _, err := os.Stat(targetPath); err == nil {
+			fatalErr(fmt.Errorf("output file already exists: %s", targetPath))
+		}
+	}
+
+	if err := os.MkdirAll(filepath.Dir(targetPath), 0o755); err != nil {
+		fatalErr(fmt.Errorf("create output directory: %w", err))
+	}
+	if err := os.WriteFile(targetPath, downloaded.Body, 0o600); err != nil {
+		fatalErr(fmt.Errorf("write attachment file: %w", err))
+	}
+
+	out := struct {
+		AttachmentID string `json:"attachment_id"`
+		FileName     string `json:"file_name"`
+		ContentType  string `json:"content_type,omitempty"`
+		BytesWritten int    `json:"bytes_written"`
+		Destination  string `json:"destination"`
+	}{
+		AttachmentID: fs.Arg(0),
+		FileName:     downloaded.FileName,
+		ContentType:  downloaded.ContentType,
+		BytesWritten: len(downloaded.Body),
+		Destination:  targetPath,
+	}
+
+	enc := json.NewEncoder(os.Stdout)
+	enc.SetIndent("", "  ")
+	if err := enc.Encode(out); err != nil {
+		fatalErr(err)
+	}
+}
+
+func resolveDestinationPath(fileName, destination, output, dir string) string {
+	targetPath := strings.TrimSpace(destination)
+	if targetPath != "" {
+		if info, err := os.Stat(targetPath); err == nil && info.IsDir() {
+			return filepath.Join(targetPath, fileName)
+		}
+		if hasPathSeparatorSuffix(targetPath) {
+			return filepath.Join(targetPath, fileName)
+		}
+		return targetPath
+	}
+
+	targetPath = strings.TrimSpace(output)
+	if targetPath != "" {
+		return targetPath
+	}
+
+	baseDir := strings.TrimSpace(dir)
+	if baseDir == "" {
+		baseDir = "."
+	}
+	return filepath.Join(baseDir, fileName)
+}
+
+func hasPathSeparatorSuffix(path string) bool {
+	return strings.HasSuffix(path, "/") || strings.HasSuffix(path, "\\")
 }
 
 func runAuthWriteConfig(args []string, resolver *config.Resolver) {
@@ -368,6 +571,84 @@ func runAuthClearAccess(args []string, resolver *config.Resolver) {
 	if err := enc.Encode(out); err != nil {
 		fatalErr(err)
 	}
+}
+
+func newZendeskClientFromResolver(resolver *config.Resolver, source config.Source, organization, instance string) (*zendesk.Client, error) {
+	resolved, err := resolver.ResolveToken(config.ResolveOptions{
+		Source:      source,
+		OrgSuffix:   organization,
+		InstanceURL: instance,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	instanceURL := strings.TrimSpace(instance)
+	if instanceURL == "" {
+		instanceURL = config.InstanceURLFromSuffix(organization)
+	}
+	if instanceURL == "" {
+		return nil, config.ErrInstanceURLRequired
+	}
+
+	return zendesk.NewAuthenticatedClient(instanceURL, resolved, &http.Client{})
+}
+
+func writeResults(format string, results []zendesk.Result) error {
+	switch normalizeFormat(format) {
+	case "json":
+		enc := json.NewEncoder(os.Stdout)
+		enc.SetIndent("", "  ")
+		return enc.Encode(zendesk.JSONValue(results))
+	case "compact":
+		text, err := zendesk.RenderCompact(results)
+		if err != nil {
+			return err
+		}
+		if text == "" {
+			return nil
+		}
+		fmt.Println(text)
+		return nil
+	default:
+		return fmt.Errorf("unsupported format %q", format)
+	}
+}
+
+func normalizeFormat(format string) string {
+	value := strings.TrimSpace(strings.ToLower(format))
+	switch value {
+	case "", "json":
+		return "json"
+	case "compact", "llm":
+		return "compact"
+	default:
+		return value
+	}
+}
+
+func reorderFlagArgs(args []string) []string {
+	if len(args) < 2 {
+		return args
+	}
+
+	reordered := make([]string, 0, len(args))
+	positionals := make([]string, 0, len(args))
+
+	for idx := 0; idx < len(args); idx++ {
+		arg := args[idx]
+		if strings.HasPrefix(arg, "-") {
+			reordered = append(reordered, arg)
+			if !strings.Contains(arg, "=") && idx+1 < len(args) && !strings.HasPrefix(args[idx+1], "-") {
+				reordered = append(reordered, args[idx+1])
+				idx++
+			}
+			continue
+		}
+		positionals = append(positionals, arg)
+	}
+
+	return append(reordered, positionals...)
 }
 
 func fatalErr(err error) {

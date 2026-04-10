@@ -89,3 +89,62 @@ go run ./cmd/zendesk-mgmt auth clean --organization acme
 `auth whoami` now performs a live Zendesk auth probe by default using the stored credentials and `GET /api/v2/users/me.json`. Use `--check=false` for storage-only inspection.
 
 See `references/auth-config.md` for the concrete path and resolution rules.
+
+## Query Facade
+
+The agent-facing facade now lives behind two CLI entrypoints:
+
+- `q` for structured DSL reads
+- `grep` for scoped text discovery through Zendesk Search
+
+Examples:
+
+```bash
+go run ./cmd/zendesk-mgmt q 'schema()' --organization acme --format compact
+go run ./cmd/zendesk-mgmt q 'ticket(12345) { overview }' --organization acme --format json
+go run ./cmd/zendesk-mgmt q 'ticket(12345) { default }' --organization acme --format compact
+go run ./cmd/zendesk-mgmt q 'user(67890) { minimal }; organization(12) { default }' --organization acme --format compact
+go run ./cmd/zendesk-mgmt q 'search(query="type:ticket status:open", page=1, per_page=5) { overview }' --organization acme --format compact
+go run ./cmd/zendesk-mgmt grep 'invoice failed' --organization acme --type ticket --limit 10 --format compact
+```
+
+Current `q` operations:
+
+- `schema()`
+- `ticket(id)`
+- `tickets(after=?, limit=?, page=?, per_page=?)`
+- `ticket_comments(ticket_id, after=?, limit=?, page=?, per_page=?)`
+- `attachment(id)`
+- `ticket_attachments(ticket_id, after=?, limit=?, page=?, per_page=?)`
+- `user(id)`
+- `users(after=?, limit=?, page=?, per_page=?, role=?)`
+- `organization(id)`
+- `organizations(after=?, limit=?, page=?, per_page=?)`
+- `organization_memberships(organization_id=?, user_id=?, after=?, limit=?, page=?, per_page=?)`
+- `search(query, include=?, sort_by=?, sort_order=?, page=?, per_page=?)`
+- `search_count(query)`
+- `search_export(type, query, after=?, limit=100)`
+
+Supported formats:
+
+- `json`
+- `compact`
+
+Attachment download:
+
+```bash
+go run ./cmd/zendesk-mgmt attachment download 498483 --organization acme --destination ~/Downloads/
+go run ./cmd/zendesk-mgmt attachment download 498483 --organization acme --destination /tmp/file.bin --force
+```
+
+The download flow first resolves attachment metadata through Zendesk API, then
+fetches `content_url`. Zendesk auth is only attached when the download host
+matches the Zendesk instance host, which avoids leaking credentials to
+externally hosted attachment URLs.
+
+`ticket(id)` `default` and `overview` presets now include a derived
+`attachments` field with compact refs (`id + file_name`) collected from the
+ticket comments, so agents can discover downloadable attachments before
+calling `attachment download`.
+
+See `references/agent-facing-facade-spec.md` for the contract and implementation plan.
