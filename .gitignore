@@ -1,0 +1,58 @@
+# OS
+.DS_Store
+Thumbs.db
+
+# Editors
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Temp / logs
+.temp/
+*.log
+dist/
+/zendesk-mgmt
+/zendesk-mgmt.exe
+
+# Local agent runtime bootstrap
+.agents/
+.local/
+/.claude/CLAUDE.md
+/.claude/instructions
+/.claude/settings.json
+/.claude/skills/alexis-agents-infra
+/.claude/skills/pdf
+/.claude/skills/skill-creator
+/.codex/AGENTS.md
+/.codex/config.toml
+/.codex/rules/
+/.codex/skills/alexis-agents-infra
+/.codex/skills/pdf
+/.codex/skills/skill-creator
+
+# Secrets
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.venv/
+venv/
+dist/
+build/
+
+# Go
+bin/
+coverage.out
+
+# Task board runtime noise
+.task-board/logs/
