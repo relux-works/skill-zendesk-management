@@ -336,6 +336,78 @@ func TestResolveTokenFromProfileInFileConfig(t *testing.T) {
 	}
 }
 
+func TestResolveTokenRequiresOrganizationWhenOnlyProfilesExist(t *testing.T) {
+	tempDir := t.TempDir()
+	path := filepath.Join(tempDir, "zendesk-mgmt", "auth.json")
+	if err := WriteFileConfig(path, FileConfig{
+		Profiles: map[string]FileProfile{
+			"acme": {Email: "user@example.com", APIToken: "file-token", AuthType: AuthTypeAPIToken},
+			"beta": {Email: "beta@example.com", APIToken: "beta-token", AuthType: AuthTypeAPIToken},
+		},
+	}); err != nil {
+		t.Fatalf("WriteFileConfig() error = %v", err)
+	}
+
+	resolver := NewResolver(Runtime{
+		GOOS:          "windows",
+		UserConfigDir: func() (string, error) { return tempDir, nil },
+		Getenv:        func(string) string { return "" },
+	}, nil)
+
+	_, err := resolver.ResolveToken(ResolveOptions{Source: SourceEnvOrFile})
+	if !errors.Is(err, ErrOrganizationRequired) {
+		t.Fatalf("ResolveToken() error = %v, want %v", err, ErrOrganizationRequired)
+	}
+
+	var requiredErr *OrganizationRequiredError
+	if !errors.As(err, &requiredErr) {
+		t.Fatalf("ResolveToken() error type = %T, want *OrganizationRequiredError", err)
+	}
+	if len(requiredErr.AvailableProfiles) != 2 {
+		t.Fatalf("available profiles = %#v, want 2 profiles", requiredErr.AvailableProfiles)
+	}
+	if !strings.Contains(requiredErr.Error(), "acme") || !strings.Contains(requiredErr.Error(), "beta") {
+		t.Fatalf("error message should list profiles: %v", requiredErr)
+	}
+}
+
+func TestResolveTokenReportsUnknownOrganizationProfile(t *testing.T) {
+	tempDir := t.TempDir()
+	path := filepath.Join(tempDir, "zendesk-mgmt", "auth.json")
+	if err := WriteFileConfig(path, FileConfig{
+		Profiles: map[string]FileProfile{
+			"acme": {Email: "user@example.com", APIToken: "file-token", AuthType: AuthTypeAPIToken},
+		},
+	}); err != nil {
+		t.Fatalf("WriteFileConfig() error = %v", err)
+	}
+
+	resolver := NewResolver(Runtime{
+		GOOS:          "windows",
+		UserConfigDir: func() (string, error) { return tempDir, nil },
+		Getenv:        func(string) string { return "" },
+	}, nil)
+
+	_, err := resolver.ResolveToken(ResolveOptions{
+		Source:    SourceEnvOrFile,
+		OrgSuffix: "revizto",
+	})
+	if !errors.Is(err, ErrOrganizationNotFound) {
+		t.Fatalf("ResolveToken() error = %v, want %v", err, ErrOrganizationNotFound)
+	}
+
+	var notFoundErr *OrganizationNotFoundError
+	if !errors.As(err, &notFoundErr) {
+		t.Fatalf("ResolveToken() error type = %T, want *OrganizationNotFoundError", err)
+	}
+	if notFoundErr.Organization != "revizto" {
+		t.Fatalf("organization = %q, want revizto", notFoundErr.Organization)
+	}
+	if !strings.Contains(notFoundErr.Error(), "acme") {
+		t.Fatalf("error message should list available profiles: %v", notFoundErr)
+	}
+}
+
 func TestSetAccessWritesIntoKeychainBySuffix(t *testing.T) {
 	store := &fakeKeychainStore{}
 	resolver := NewResolver(Runtime{

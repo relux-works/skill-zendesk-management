@@ -197,6 +197,21 @@ func TestCompactAttachmentRefs(t *testing.T) {
 	}
 }
 
+func TestQueryEngineUnsupportedOperationIncludesGuidance(t *testing.T) {
+	engine := NewQueryEngine(&Client{httpClient: http.DefaultClient, baseURL: "https://example.zendesk.com", authHeader: "Basic test"})
+
+	_, err := engine.Execute(context.Background(), `get(68218) { id }`)
+	if err == nil {
+		t.Fatal("Execute(get) error = nil, want guidance error")
+	}
+	if !strings.Contains(err.Error(), `unsupported operation "get"`) {
+		t.Fatalf("error = %v, want unsupported operation guidance", err)
+	}
+	if !strings.Contains(err.Error(), "ticket(ID)") || !strings.Contains(err.Error(), "ticket_comments(ticket_id=ID)") {
+		t.Fatalf("error = %v, want ticket/ticket_comments guidance", err)
+	}
+}
+
 func containsLine(text, line string) bool {
 	for _, candidate := range strings.Split(text, "\n") {
 		if candidate == line {

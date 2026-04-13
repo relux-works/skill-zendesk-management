@@ -432,7 +432,18 @@ func (e *QueryEngine) executeOne(ctx context.Context, request QueryRequest) (Res
 		}
 		return newProjectedListResult(request.Operation, "search_result", response, request.Fields)
 	default:
-		return Result{}, fmt.Errorf("unsupported operation %q", request.Operation)
+		return Result{}, unsupportedOperationError(request.Operation)
+	}
+}
+
+func unsupportedOperationError(operation string) error {
+	switch strings.TrimSpace(strings.ToLower(operation)) {
+	case "get":
+		return fmt.Errorf("unsupported operation %q; use ticket(ID) for one ticket and ticket_comments(ticket_id=ID) for comments", operation)
+	case "comments":
+		return fmt.Errorf("unsupported operation %q; use ticket_comments(ticket_id=ID)", operation)
+	default:
+		return fmt.Errorf("unsupported operation %q", operation)
 	}
 }
 

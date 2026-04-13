@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"sort"
+	"strconv"
 	"strings"
 )
 
@@ -123,11 +124,64 @@ type Resolver struct {
 }
 
 var (
-	ErrAccessTokenNotFound = errors.New("access token not found")
-	ErrInstanceURLRequired = errors.New("instance URL is required for keychain mode")
-	ErrOrgSuffixRequired   = errors.New("organization is required")
-	ErrEmailRequired       = errors.New("email is required for api_token auth")
+	ErrAccessTokenNotFound  = errors.New("access token not found")
+	ErrOrganizationRequired = errors.New("organization is required")
+	ErrOrganizationNotFound = errors.New("organization profile not found")
+	ErrInstanceURLRequired  = errors.New("instance URL is required for keychain mode")
+	ErrOrgSuffixRequired    = errors.New("organization is required")
+	ErrEmailRequired        = errors.New("email is required for api_token auth")
 )
+
+type OrganizationRequiredError struct {
+	ConfigPath        string
+	AvailableProfiles []string
+}
+
+func (e *OrganizationRequiredError) Error() string {
+	var b strings.Builder
+	b.WriteString("organization is required to select a stored profile")
+	if len(e.AvailableProfiles) > 0 {
+		b.WriteString("; available profiles: ")
+		b.WriteString(strings.Join(e.AvailableProfiles, ", "))
+	}
+	if strings.TrimSpace(e.ConfigPath) != "" {
+		b.WriteString(" (config: ")
+		b.WriteString(e.ConfigPath)
+		b.WriteString(")")
+	}
+	return b.String()
+}
+
+func (e *OrganizationRequiredError) Unwrap() error {
+	return ErrOrganizationRequired
+}
+
+type OrganizationNotFoundError struct {
+	Organization      string
+	ConfigPath        string
+	AvailableProfiles []string
+}
+
+func (e *OrganizationNotFoundError) Error() string {
+	var b strings.Builder
+	b.WriteString("organization profile ")
+	b.WriteString(strconv.Quote(strings.TrimSpace(e.Organization)))
+	b.WriteString(" was not found")
+	if len(e.AvailableProfiles) > 0 {
+		b.WriteString("; available profiles: ")
+		b.WriteString(strings.Join(e.AvailableProfiles, ", "))
+	}
+	if strings.TrimSpace(e.ConfigPath) != "" {
+		b.WriteString(" (config: ")
+		b.WriteString(e.ConfigPath)
+		b.WriteString(")")
+	}
+	return b.String()
+}
+
+func (e *OrganizationNotFoundError) Unwrap() error {
+	return ErrOrganizationNotFound
+}
 
 func NewResolver(rt Runtime, keychain KeychainStore) *Resolver {
 	if rt.GOOS == "" {
@@ -240,6 +294,13 @@ func (r *Resolver) resolveFromEnvOrFile(orgSuffix string) (ResolvedToken, error)
 		profile, ok := cfg.Profiles[suffix]
 		credentials := credentialsFromFileProfile(profile)
 		if !ok || strings.TrimSpace(credentials.Token) == "" {
+			if available := profileNames(cfg.Profiles); len(available) > 0 {
+				return ResolvedToken{}, &OrganizationNotFoundError{
+					Organization:      suffix,
+					ConfigPath:        path,
+					AvailableProfiles: available,
+				}
+			}
 			return ResolvedToken{}, ErrAccessTokenNotFound
 		}
 		if err := validateResolvedCredentials(credentials); err != nil {
@@ -257,6 +318,12 @@ func (r *Resolver) resolveFromEnvOrFile(orgSuffix string) (ResolvedToken, error)
 
 	credentials := credentialsFromFileConfig(cfg)
 	if strings.TrimSpace(credentials.Token) == "" {
+		if available := profileNames(cfg.Profiles); len(available) > 0 {
+			return ResolvedToken{}, &OrganizationRequiredError{
+				ConfigPath:        path,
+				AvailableProfiles: available,
+			}
+		}
 		return ResolvedToken{}, ErrAccessTokenNotFound
 	}
 	if err := validateResolvedCredentials(credentials); err != nil {
