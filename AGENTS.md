@@ -27,6 +27,10 @@ This repository is for a Zendesk-focused agent skill plus a companion Go CLI.
   - `zendesk-mgmt grep ...` is the scoped full-text search path for local references, fixtures, and cached artifacts.
   - Defer `m`/write mutations until the read contract is stable.
 - Keep the query layer compact: field projection, presets, batching, and machine-stable output are required.
+- For per-ticket investigation workspaces, materialize artifacts into project-local `.attachments/` rather than temp-root dumps.
+- If the user asks to inspect logs, do not ingest the full log into context up front.
+  Search `.attachments/` first with targeted patterns, then read only narrow slices around the hits.
+  Prefer `rg` on both macOS and Windows when available; on Windows without `rg`, use PowerShell `Select-String` as the fallback search path.
 
 ## Build, Test, and Development Commands
 Run from the repo root once the Go scaffold exists:

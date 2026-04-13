@@ -11,6 +11,7 @@ import (
 	"runtime"
 	"strings"
 
+	"github.com/relux-works/skill-zendesk-management/internal/artifacts"
 	"github.com/relux-works/skill-zendesk-management/internal/config"
 	"github.com/relux-works/skill-zendesk-management/internal/zendesk"
 	"github.com/zalando/go-keyring"
@@ -21,6 +22,8 @@ var (
 	Commit    = "unknown"
 	BuildDate = "unknown"
 )
+
+const defaultAttachmentDownloadSubdir = "zendesk-attachments"
 
 func main() {
 	if len(os.Args) < 2 {
@@ -35,6 +38,8 @@ func main() {
 		runQuery(os.Args[2:])
 	case "grep":
 		runGrep(os.Args[2:])
+	case "ticket":
+		runTicket(os.Args[2:])
 	case "attachment":
 		runAttachment(os.Args[2:])
 	case "version", "--version":
@@ -53,6 +58,7 @@ func usage() {
 	fmt.Fprintln(os.Stderr, "  zendesk-mgmt version")
 	fmt.Fprintln(os.Stderr, "  zendesk-mgmt q '<query>' --organization ORG --format json|compact [--source auto|keychain|env_or_file] [--instance URL]")
 	fmt.Fprintln(os.Stderr, "  zendesk-mgmt grep 'text query' --organization ORG --format json|compact [--type ticket|user|organization] [--limit N]")
+	fmt.Fprintln(os.Stderr, "  zendesk-mgmt ticket materialize TICKET_ID --organization ORG [--destination DIR] [--force] [--source auto|keychain|env_or_file] [--instance URL]")
 	fmt.Fprintln(os.Stderr, "  zendesk-mgmt attachment download ATTACHMENT_ID --organization ORG [--destination PATH] [--force] [--source auto|keychain|env_or_file] [--instance URL]")
 	fmt.Fprintln(os.Stderr, "  zendesk-mgmt auth config-path")
 	fmt.Fprintln(os.Stderr, "  zendesk-mgmt auth set-access --organization ORG --email EMAIL --token TOKEN [--source auto|keychain|env_or_file]")
@@ -203,6 +209,65 @@ func runAttachment(args []string) {
 	}
 }
 
+func runTicket(args []string) {
+	if len(args) < 1 {
+		usage()
+		os.Exit(2)
+	}
+
+	switch args[0] {
+	case "materialize":
+		runTicketMaterialize(args[1:])
+	default:
+		fmt.Fprintf(os.Stderr, "unknown ticket command: %s\n\n", args[0])
+		usage()
+		os.Exit(2)
+	}
+}
+
+func runTicketMaterialize(args []string) {
+	fs := flag.NewFlagSet("ticket materialize", flag.ExitOnError)
+	source := fs.String("source", string(config.SourceAuto), "Token source: auto, keychain, env_or_file")
+	organization := bindOrganizationFlags(fs)
+	instance := fs.String("instance", "", "Zendesk instance URL override")
+	destination := fs.String("destination", artifacts.DefaultRootDir, "Destination directory for the project-local attachments workspace")
+	force := fs.Bool("force", false, "Overwrite an existing non-empty attachments workspace")
+	_ = fs.Parse(reorderFlagArgs(args))
+
+	if fs.NArg() != 1 {
+		fatalErr(fmt.Errorf("ticket materialize requires exactly one ticket id"))
+	}
+
+	resolver := config.NewResolver(
+		config.Runtime{
+			GOOS:          runtime.GOOS,
+			UserConfigDir: os.UserConfigDir,
+			Getenv:        os.Getenv,
+		},
+		config.NewKeychainStore(keyring.Get, keyring.Set, keyring.Delete),
+	)
+
+	client, err := newZendeskClientFromResolver(resolver, config.Source(*source), *organization, *instance)
+	if err != nil {
+		fatalErr(err)
+	}
+
+	result, err := artifacts.NewMaterializer(client).MaterializeTicket(context.Background(), artifacts.MaterializeOptions{
+		TicketID: fs.Arg(0),
+		RootDir:  *destination,
+		Force:    *force,
+	})
+	if err != nil {
+		fatalErr(err)
+	}
+
+	enc := json.NewEncoder(os.Stdout)
+	enc.SetIndent("", "  ")
+	if err := enc.Encode(result); err != nil {
+		fatalErr(err)
+	}
+}
+
 func runAttachmentDownload(args []string) {
 	fs := flag.NewFlagSet("attachment download", flag.ExitOnError)
 	source := fs.String("source", string(config.SourceAuto), "Token source: auto, keychain, env_or_file")
@@ -210,7 +275,7 @@ func runAttachmentDownload(args []string) {
 	instance := fs.String("instance", "", "Zendesk instance URL override")
 	destination := fs.String("destination", "", "Destination file path or directory")
 	output := fs.String("output", "", "Output file path (compat alias; prefer --destination)")
-	dir := fs.String("dir", ".", "Output directory when --output is omitted (compat alias; prefer --destination DIR)")
+	dir := fs.String("dir", defaultAttachmentDownloadDir(), "Output directory when --output is omitted (compat alias; prefer --destination DIR)")
 	force := fs.Bool("force", false, "Overwrite existing file")
 	_ = fs.Parse(reorderFlagArgs(args))
 
@@ -292,9 +357,13 @@ func resolveDestinationPath(fileName, destination, output, dir string) string {
 
 	baseDir := strings.TrimSpace(dir)
 	if baseDir == "" {
-		baseDir = "."
+		baseDir = defaultAttachmentDownloadDir()
 	}
 	return filepath.Join(baseDir, fileName)
+}
+
+func defaultAttachmentDownloadDir() string {
+	return filepath.Join(".temp", defaultAttachmentDownloadSubdir)
 }
 
 func hasPathSeparatorSuffix(path string) bool {

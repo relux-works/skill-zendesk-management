@@ -20,6 +20,7 @@ The companion CLI has three main read surfaces:
 - `auth` for setup and credential inspection
 - `q` for structured reads through the mini DSL
 - `grep` for quick ticket discovery through Zendesk Search
+- `ticket materialize` for project-local ticket artifact workspaces
 - `attachment download` for saving a binary attachment to disk
 
 Prefer the installed binary:
@@ -70,7 +71,8 @@ Use this order for most support investigations:
 2. Read the ticket with `ticket(id)`
 3. Pull the conversation with `ticket_comments(ticket_id=...)`
 4. Inspect attachment refs from `ticket(id)` or `ticket_attachments(ticket_id=...)`
-5. Download the exact attachment if needed
+5. Materialize the full ticket artifact workspace if log or bundle analysis is needed
+6. Download one exact attachment only if the targeted workspace flow is not enough
 
 Start with a quick search:
 
@@ -109,6 +111,42 @@ zendesk-mgmt attachment download 498483 --organization acme --destination /tmp/f
 ```
 
 `--destination` accepts either a directory or a full file path.
+Without `--destination`, downloads land in `.temp/zendesk-attachments/`
+relative to the current working directory.
+
+Materialize a ticket workspace:
+
+```bash
+zendesk-mgmt ticket materialize 12345 --organization acme
+zendesk-mgmt ticket materialize 12345 --organization acme --destination .attachments --force
+```
+
+This is the preferred path for ticket-log work. It creates `.attachments/`
+with `files/`, `expanded/`, and `manifest.json`. Archive attachments are
+expanded recursively. Text-like outputs are anonymized before they become
+agent-facing workspace files.
+
+## Log Investigation
+
+If the user says "look at the logs", "check the logs", "позырь логи", or
+similar, do not read the whole log file directly into context.
+
+Use this discipline:
+
+1. Run `zendesk-mgmt ticket materialize ...` if the workspace does not exist yet.
+2. Search `.attachments/` with targeted patterns first.
+3. Read only narrow slices around the hits.
+
+Preferred search path:
+
+- macOS/Linux: `rg -n -S 'error|exception|timeout|failed' .attachments`
+- Windows with `rg`: `rg -n -S 'error|exception|timeout|failed' .attachments`
+- Windows fallback: `Get-ChildItem -Recurse -File .attachments | Select-String -Pattern 'error|exception|timeout|failed'`
+
+Preferred narrow read after a hit:
+
+- macOS/Linux: `sed -n '120,220p' <path>`
+- Windows PowerShell: `Get-Content <path> | Select-Object -Skip 119 -First 100`
 
 ## Output Modes
 
@@ -148,5 +186,6 @@ Read these files as needed:
 - On Windows-friendly flows, default auth storage is the standard global config under `os.UserConfigDir()/zendesk-mgmt/auth.json`.
 - Keep the CLI compatible with the `agent-facing-api` pattern.
 - Prefer ticket-centric workflows first; user and organization reads are supporting lookups.
+- Prefer `ticket materialize` plus local grep-first log investigation over dumping full logs into context.
 - Do not add mutation commands without a separate spec.
 - Prefer table-driven tests and `httptest`-style local verification over live-network tests.

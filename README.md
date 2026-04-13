@@ -96,6 +96,7 @@ The agent-facing facade now lives behind two CLI entrypoints:
 
 - `q` for structured DSL reads
 - `grep` for scoped text discovery through Zendesk Search
+- `ticket materialize` for project-local ticket artifact workspaces
 
 Examples:
 
@@ -137,6 +138,9 @@ go run ./cmd/zendesk-mgmt attachment download 498483 --organization acme --desti
 go run ./cmd/zendesk-mgmt attachment download 498483 --organization acme --destination /tmp/file.bin --force
 ```
 
+If no destination is provided, files are written under `.temp/zendesk-attachments/`
+relative to the current working directory.
+
 The download flow first resolves attachment metadata through Zendesk API, then
 fetches `content_url`. Zendesk auth is only attached when the download host
 matches the Zendesk instance host, which avoids leaking credentials to
@@ -146,5 +150,51 @@ externally hosted attachment URLs.
 `attachments` field with compact refs (`id + file_name`) collected from the
 ticket comments, so agents can discover downloadable attachments before
 calling `attachment download`.
+
+Ticket artifact workspace:
+
+```bash
+go run ./cmd/zendesk-mgmt ticket materialize 12345 --organization acme
+go run ./cmd/zendesk-mgmt ticket materialize 12345 --organization acme --destination .attachments --force
+```
+
+`ticket materialize` is the project-local investigation flow. It writes a
+managed workspace under `.attachments/` with:
+
+- `files/` for top-level non-archive attachments
+- `expanded/` for recursively extracted archives
+- `manifest.json` with machine-stable paths for later tooling and agents
+
+Text-like files are anonymized before they are written into the workspace.
+Binary files stay binary. Archive payloads are expanded before agent-facing
+inspection so the agent can work on extracted logs instead of raw zip blobs.
+
+## Log Investigation
+
+When the user says things like "check the logs" or "look through the logs", do
+not dump the whole file into context. The intended workflow is:
+
+1. Materialize ticket artifacts into `.attachments/`.
+2. Search for the likely signal first.
+3. Read only narrow slices around the hits.
+
+macOS/Linux:
+
+```bash
+rg -n -S 'error|exception|timeout|failed' .attachments
+sed -n '120,220p' .attachments/expanded/001-support-bundle/logs/app.log
+```
+
+Windows PowerShell:
+
+```powershell
+if (Get-Command rg -ErrorAction SilentlyContinue) {
+  rg -n -S 'error|exception|timeout|failed' .attachments
+} else {
+  Get-ChildItem -Recurse -File .attachments | Select-String -Pattern 'error|exception|timeout|failed'
+}
+
+Get-Content .attachments\expanded\001-support-bundle\logs\app.log | Select-Object -Skip 119 -First 100
+```
 
 See `references/agent-facing-facade-spec.md` for the contract and implementation plan.
