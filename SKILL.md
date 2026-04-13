@@ -86,7 +86,7 @@ zendesk-mgmt q 'ticket(12345) { default }' --organization acme --format compact
 zendesk-mgmt q 'ticket(12345) { full }' --organization acme --format json
 ```
 
-`ticket(id)` `default` and `overview` include a derived `attachments` field with compact refs like `15759358677263 logs.zip`.
+`ticket(id)` `default` and `overview` include a derived `attachments` field with compact refs like `<attachment_id> filename.ext`.
 
 Read the conversation:
 
@@ -98,14 +98,14 @@ Inspect attachments:
 
 ```bash
 zendesk-mgmt q 'ticket_attachments(ticket_id=12345, limit=20) { overview }' --organization acme --format compact
-zendesk-mgmt q 'attachment(15759358677263) { default }' --organization acme --format compact
+zendesk-mgmt q 'attachment(498483) { default }' --organization acme --format compact
 ```
 
 Download an attachment:
 
 ```bash
-zendesk-mgmt attachment download 15759358677263 --organization acme --destination ~/Downloads/
-zendesk-mgmt attachment download 15759358677263 --organization acme --destination /tmp/logs.zip --force
+zendesk-mgmt attachment download 498483 --organization acme --destination ~/Downloads/
+zendesk-mgmt attachment download 498483 --organization acme --destination /tmp/file.bin --force
 ```
 
 `--destination` accepts either a directory or a full file path.

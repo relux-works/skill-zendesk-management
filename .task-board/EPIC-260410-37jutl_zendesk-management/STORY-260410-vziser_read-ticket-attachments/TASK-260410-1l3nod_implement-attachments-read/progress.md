@@ -8,7 +8,7 @@ codex
 2026-04-10T09:58:14Z
 
 ## Last Update
-2026-04-10T10:02:52Z
+2026-04-10T11:15:22Z
 
 ## Blocked By
 - (none)
@@ -20,7 +20,7 @@ codex
 (empty)
 
 ## Notes
-Implemented read-only attachment support: q attachment(id), q ticket_attachments(ticket_id=...), and attachment download ATTACHMENT_ID with host-aware auth handling for content_url downloads. Added attachment schema/presets/docs and tests for ticket attachment flattening plus same-host vs external-host download auth behavior. Live smoke on revizto passed for search(query="type:ticket has_attachment:true"), ticket_attachments(ticket_id=68159), attachment(15759358677263), and attachment download 15759358677263.
+Implemented read-only attachment support: q attachment(id), q ticket_attachments(ticket_id=...), and attachment download ATTACHMENT_ID with host-aware auth handling for content_url downloads. Added attachment schema/presets/docs and tests for ticket attachment flattening plus same-host vs external-host download auth behavior. Live smoke passed for attachment-aware search, ticket_attachments(ticket_id=<ticket_id>), attachment(<attachment_id>), and attachment download to a local destination.
 
 ## Precondition Resources
 (none)

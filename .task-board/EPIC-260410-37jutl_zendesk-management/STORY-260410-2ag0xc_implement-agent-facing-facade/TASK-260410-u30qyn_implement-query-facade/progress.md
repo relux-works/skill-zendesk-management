@@ -8,7 +8,7 @@ codex
 2026-04-10T09:46:54Z
 
 ## Last Update
-2026-04-10T09:54:40Z
+2026-04-10T11:15:22Z
 
 ## Blocked By
 - (none)
@@ -20,7 +20,7 @@ codex
 (empty)
 
 ## Notes
-Implemented agent-facing facade slice in zendesk-mgmt: q command, grep command, shared authenticated Zendesk client, DSL parser with batching, schema(), exact reads (ticket/user/organization), list reads (tickets/users/organizations/ticket_comments/organization_memberships), search/search_count/search_export, compact/json rendering, and flag reordering so positional query before flags works as documented. Live smoke verified against revizto with q schema(), q user(...), and grep user search.
+Implemented agent-facing facade slice in zendesk-mgmt: q command, grep command, shared authenticated Zendesk client, DSL parser with batching, schema(), exact reads (ticket/user/organization), list reads (tickets/users/organizations/ticket_comments/organization_memberships), search/search_count/search_export, compact/json rendering, and flag reordering so positional query before flags works as documented. Live smoke verified against a configured Zendesk org with q schema(), q user(...), and grep user search.
 
 ## Precondition Resources
 (none)

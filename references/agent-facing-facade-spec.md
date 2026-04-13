@@ -103,11 +103,11 @@ Rules:
 Examples:
 
 ```bash
-zendesk-mgmt q 'schema()' --organization revizto --format json
-zendesk-mgmt q 'ticket(12345) { overview }' --organization revizto --format compact
-zendesk-mgmt q 'ticket_comments(ticket_id=12345, limit=5) { default }' --organization revizto --format compact
-zendesk-mgmt q 'search(query="type:ticket status:open") { overview }' --organization revizto --format compact
-zendesk-mgmt q 'ticket(12345) { overview }; user(67890) { minimal }' --organization revizto --format compact
+zendesk-mgmt q 'schema()' --organization acme --format json
+zendesk-mgmt q 'ticket(12345) { overview }' --organization acme --format compact
+zendesk-mgmt q 'ticket_comments(ticket_id=12345, limit=5) { default }' --organization acme --format compact
+zendesk-mgmt q 'search(query="type:ticket status:open") { overview }' --organization acme --format compact
+zendesk-mgmt q 'ticket(12345) { overview }; user(67890) { minimal }' --organization acme --format compact
 ```
 
 ### `grep`
@@ -120,8 +120,8 @@ quick discovery and compact output.
 Examples:
 
 ```bash
-zendesk-mgmt grep 'invoice failed' --organization revizto --type ticket --format compact
-zendesk-mgmt grep 'Acme' --organization revizto --type organization --format json
+zendesk-mgmt grep 'invoice failed' --organization acme --type ticket --format compact
+zendesk-mgmt grep 'Acme' --organization acme --type organization --format json
 ```
 
 Rules:
