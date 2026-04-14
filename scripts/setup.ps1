@@ -90,6 +90,18 @@ function Install-Binary {
     Write-Info "Installed binary: $(Join-Path $BinDir $BinaryName)"
 }
 
+function Install-BashShim {
+    $ShimPath = Join-Path $BinDir "zendesk-mgmt"
+    $ShimContent = @"
+#!/usr/bin/env sh
+DIR=`$(CDPATH= cd -- "`$(dirname -- "`$0")" && pwd)
+exec "`$DIR/zendesk-mgmt.exe" "`$@"
+"@
+    $Utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+    [System.IO.File]::WriteAllText($ShimPath, $ShimContent.TrimStart(), $Utf8NoBom)
+    Write-Info "Installed bash shim: $ShimPath"
+}
+
 function Scrub-GitMetadata([string]$Path) {
     @(".git", ".gitignore", ".gitattributes", ".gitmodules") | ForEach-Object {
         $Target = Join-Path $Path $_
@@ -166,8 +178,12 @@ function Ensure-UserPath {
 
 function Verify-Install {
     $InstalledBinary = Join-Path $BinDir $BinaryName
+    $InstalledShim = Join-Path $BinDir "zendesk-mgmt"
     if (-not (Test-Path $InstalledBinary)) {
         throw "Missing installed binary: $InstalledBinary"
+    }
+    if (-not (Test-Path $InstalledShim)) {
+        throw "Missing installed bash shim: $InstalledShim"
     }
     if (-not (Test-Path (Join-Path $AgentsDest "SKILL.md"))) {
         throw "Installed skill artifact is missing SKILL.md"
@@ -189,6 +205,7 @@ Ensure-Go
 Get-VersionMetadata
 Build-Cli
 Install-Binary
+Install-BashShim
 Install-SkillArtifact
 Refresh-Links
 Write-InstallState

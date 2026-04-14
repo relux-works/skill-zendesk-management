@@ -69,14 +69,39 @@ func usage() {
 	fmt.Fprintln(os.Stderr, "  zendesk-mgmt auth resolve [--source auto|keychain|env_or_file] [--organization ORG] [--instance URL]")
 }
 
+func authUsage() {
+	fmt.Fprintln(os.Stderr, "Usage:")
+	fmt.Fprintln(os.Stderr, "  zendesk-mgmt auth config-path")
+	fmt.Fprintln(os.Stderr, "  zendesk-mgmt auth set-access --organization ORG --email EMAIL --token TOKEN [--source auto|keychain|env_or_file]")
+	fmt.Fprintln(os.Stderr, "  zendesk-mgmt auth whoami [--source auto|keychain|env_or_file] [--organization ORG] [--instance URL] [--check=false]")
+	fmt.Fprintln(os.Stderr, "  zendesk-mgmt auth clean [--source auto|keychain|env_or_file] [--organization ORG] [--instance URL]")
+	fmt.Fprintln(os.Stderr, "  zendesk-mgmt auth clear-access [--source auto|keychain|env_or_file] [--organization ORG] [--instance URL]")
+	fmt.Fprintln(os.Stderr, "  zendesk-mgmt auth write-config --organization ORG --email EMAIL --token TOKEN [--path PATH]")
+	fmt.Fprintln(os.Stderr, "  zendesk-mgmt auth resolve [--source auto|keychain|env_or_file] [--organization ORG] [--instance URL]")
+}
+
+func ticketUsage() {
+	fmt.Fprintln(os.Stderr, "Usage:")
+	fmt.Fprintln(os.Stderr, "  zendesk-mgmt ticket materialize TICKET_ID --organization ORG [--destination DIR] [--force] [--source auto|keychain|env_or_file] [--instance URL]")
+}
+
+func attachmentUsage() {
+	fmt.Fprintln(os.Stderr, "Usage:")
+	fmt.Fprintln(os.Stderr, "  zendesk-mgmt attachment download ATTACHMENT_ID --organization ORG [--destination PATH] [--force] [--source auto|keychain|env_or_file] [--instance URL]")
+}
+
 func printVersion() {
 	fmt.Printf("zendesk-mgmt %s commit=%s build_date=%s %s/%s\n", Version, Commit, BuildDate, runtime.GOOS, runtime.GOARCH)
 }
 
 func runAuth(args []string) {
 	if len(args) < 1 {
-		usage()
+		authUsage()
 		os.Exit(2)
+	}
+	if isHelpToken(args[0]) {
+		authUsage()
+		return
 	}
 
 	resolver := config.NewResolver(
@@ -109,7 +134,7 @@ func runAuth(args []string) {
 		runAuthResolve(args[1:], resolver)
 	default:
 		fmt.Fprintf(os.Stderr, "unknown auth command: %s\n\n", args[0])
-		usage()
+		authUsage()
 		os.Exit(2)
 	}
 }
@@ -195,8 +220,12 @@ func runGrep(args []string) {
 
 func runAttachment(args []string) {
 	if len(args) < 1 {
-		usage()
+		attachmentUsage()
 		os.Exit(2)
+	}
+	if isHelpToken(args[0]) {
+		attachmentUsage()
+		return
 	}
 
 	switch args[0] {
@@ -204,15 +233,19 @@ func runAttachment(args []string) {
 		runAttachmentDownload(args[1:])
 	default:
 		fmt.Fprintf(os.Stderr, "unknown attachment command: %s\n\n", args[0])
-		usage()
+		attachmentUsage()
 		os.Exit(2)
 	}
 }
 
 func runTicket(args []string) {
 	if len(args) < 1 {
-		usage()
+		ticketUsage()
 		os.Exit(2)
+	}
+	if isHelpToken(args[0]) {
+		ticketUsage()
+		return
 	}
 
 	switch args[0] {
@@ -220,7 +253,7 @@ func runTicket(args []string) {
 		runTicketMaterialize(args[1:])
 	default:
 		fmt.Fprintf(os.Stderr, "unknown ticket command: %s\n\n", args[0])
-		usage()
+		ticketUsage()
 		os.Exit(2)
 	}
 }
@@ -737,4 +770,13 @@ func bindTokenFlags(fs *flag.FlagSet) *string {
 	fs.StringVar(&token, "token", "", "Zendesk API token")
 	fs.StringVar(&token, "access-token", "", "Deprecated alias for --token")
 	return &token
+}
+
+func isHelpToken(value string) bool {
+	switch strings.TrimSpace(value) {
+	case "help", "--help", "-h":
+		return true
+	default:
+		return false
+	}
 }

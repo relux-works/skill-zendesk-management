@@ -37,3 +37,14 @@ func TestResolveDestinationPathPreservesExplicitDirOverride(t *testing.T) {
 		t.Fatalf("resolveDestinationPath(explicit dir) = %q, want %q", got, want)
 	}
 }
+
+func TestIsHelpToken(t *testing.T) {
+	for _, value := range []string{"help", "--help", "-h"} {
+		if !isHelpToken(value) {
+			t.Fatalf("isHelpToken(%q) = false, want true", value)
+		}
+	}
+	if isHelpToken("download") {
+		t.Fatalf("isHelpToken(download) = true, want false")
+	}
+}
